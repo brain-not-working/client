@@ -1,0 +1,872 @@
+import { useState } from "react";
+import api from "../../../lib/axiosConfig";
+import { Button } from "../../../shared/components/Button";
+import {
+  FormInput,
+  FormTextarea,
+  FormFileInput,
+  FormSelect,
+} from "../../../shared/components/Form";
+import {
+  X,
+  Save,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Building,
+  Globe,
+  Calendar,
+  Award,
+  Lock,
+  Eye,
+  EyeOff,
+  Pencil,
+  CheckCheck,
+  BadgeCheck,
+  Trash2,
+  Menu,
+} from "lucide-react";
+import Modal from "../../../shared/components/Modal/Modal";
+import { useVendorAuth } from "../../contexts/VendorAuthContext";
+import { toast } from "sonner";
+
+const ProfileEditModal = ({ isOpen, onClose, profile, onProfileUpdate }) => {
+  const [activeSection, setActiveSection] = useState("profile");
+  const [updating, setUpdating] = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { currentUser, setCurrentUser } = useVendorAuth();
+
+  const [formData, setFormData] = useState({
+    name: profile?.name || "",
+    email: profile?.email || "",
+    phone: profile?.phone || "",
+    address: profile?.address || "",
+    companyAddress: profile?.companyAddress || "",
+    contactPerson: profile?.contactPerson || "",
+    googleBusinessProfileLink: profile?.googleBusinessProfileLink || "",
+    expertise: profile?.expertise || "",
+    aboutMe: profile?.aboutMe || "",
+    birthDate: profile?.birthDate?.slice(0, 10) || "",
+    policeClearance: null,
+    certificateOfExpertise: null,
+    businessLicense: null,
+    certificateOfExpertiseExpireDate: profile?.certificateOfExpertiseExpireDate
+      ? profile.certificateOfExpertiseExpireDate.slice(0, 10)
+      : "",
+    businessLicenseExpireDate: profile?.businessLicenseExpireDate
+      ? profile.businessLicenseExpireDate.slice(0, 10)
+      : "",
+  });
+
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const [showPassword, setShowPassword] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+
+  // Track which certificates are marked for deletion
+  const [certificatesToDelete, setCertificatesToDelete] = useState({
+    policeClearance: false,
+    certificateOfExpertise: false,
+    businessLicense: false,
+  });
+
+  if (!isOpen) return null;
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const UploadedInfo = ({ url, label, extra, onDelete, certificateKey }) => {
+    if (!url || certificatesToDelete[certificateKey]) return null;
+    return (
+      <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-2.5 py-1">
+        <CheckCheck className="w-4 h-4 text-green-600" />
+        <span className="text-sm text-green-800">{label} uploaded</span>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm underline hover:no-underline"
+        >
+          View
+        </a>
+        {extra ? (
+          <span className="text-sm text-green-800">• {extra}</span>
+        ) : null}
+        <button
+          type="button"
+          onClick={onDelete}
+          className="p-1 text-red-600 transition-colors rounded-full hover:bg-red-100"
+          title={`Delete ${label}`}
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleImageChange = (e) => {
+    if (e.target.files?.length > 0) {
+      setProfileImage(e.target.files[0]);
+    }
+  };
+
+  // Function to delete police clearance
+  const deletePoliceClearance = () => {
+    setCertificatesToDelete((prev) => ({
+      ...prev,
+      policeClearance: true,
+    }));
+    setFormData((prev) => ({
+      ...prev,
+      policeClearance: null,
+    }));
+    toast.info("Police clearance marked for removal. Save changes to confirm.");
+  };
+
+  // Function to delete certificate of expertise
+  const deleteCertificateOfExpertise = () => {
+    setCertificatesToDelete((prev) => ({
+      ...prev,
+      certificateOfExpertise: true,
+    }));
+    setFormData((prev) => ({
+      ...prev,
+      certificateOfExpertise: null,
+      certificateOfExpertiseExpireDate: "",
+    }));
+    toast.info(
+      "Certificate of expertise marked for removal. Save changes to confirm."
+    );
+  };
+
+  // Function to delete business license
+  const deleteBusinessLicense = () => {
+    setCertificatesToDelete((prev) => ({
+      ...prev,
+      businessLicense: true,
+    }));
+    setFormData((prev) => ({
+      ...prev,
+      businessLicense: null,
+      businessLicenseExpireDate: "",
+    }));
+    toast.info("Business license marked for removal. Save changes to confirm.");
+  };
+
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setUpdating(true);
+      const data = new FormData();
+
+      // Check if new business license file is added but expire date is missing
+      if (formData.businessLicense && !formData.businessLicenseExpireDate) {
+        toast.error("Business license expire date is required");
+        return;
+      }
+
+      // Check if new certificate of expertise file is added but expire date is missing
+      if (
+        formData.certificateOfExpertise &&
+        !formData.certificateOfExpertiseExpireDate
+      ) {
+        toast.error("Certificate of expertise expire date is required");
+        return;
+      }
+
+      // Append all form data except certificates
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== null && value !== "") {
+          // Don't append certificate files that are marked for deletion
+          if (
+            !(
+              key === "policeClearance" && certificatesToDelete.policeClearance
+            ) &&
+            !(
+              key === "certificateOfExpertise" &&
+              certificatesToDelete.certificateOfExpertise
+            ) &&
+            !(key === "businessLicense" && certificatesToDelete.businessLicense)
+          ) {
+            data.append(key, value);
+          }
+        }
+      });
+
+      // Handle certificate deletions - only send empty strings for deleted certificates
+      if (certificatesToDelete.policeClearance) {
+        data.append("policeClearance", "");
+        toast.success("Police clearance deleted successfully");
+      }
+
+      if (certificatesToDelete.certificateOfExpertise) {
+        data.append("certificateOfExpertise", "");
+        data.append("certificateOfExpertiseExpireDate", "");
+        toast.success("Certificate of expertise deleted successfully");
+      }
+
+      if (certificatesToDelete.businessLicense) {
+        data.append("businessLicense", "");
+        data.append("businessLicenseExpireDate", "");
+        toast.success("Business license deleted successfully");
+      }
+
+      // Append profile image if changed
+      if (profileImage) {
+        data.append("profileImageVendor", profileImage);
+      }
+
+      const response = await api.put("/api/vendor/updateprofile", data, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (response.status === 200) {
+        toast.success("Profile updated successfully");
+
+        // Reset deletion tracking after successful update
+        setCertificatesToDelete({
+          policeClearance: false,
+          certificateOfExpertise: false,
+          businessLicense: false,
+        });
+
+        onProfileUpdate();
+      }
+
+      const vendorData =
+        JSON.parse(localStorage.getItem("vendorData")) ||
+        JSON.parse(sessionStorage.getItem("vendorData"));
+
+      vendorData.name = formData.name;
+
+      try {
+        localStorage.setItem("vendorData", JSON.stringify(vendorData)) ||
+          sessionStorage.setItem("vendorData", JSON.stringify(vendorData));
+
+        setCurrentUser(vendorData);
+      } catch (err) {
+        console.warn("Failed to write vendorData to localStorage", err);
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast.error(error.response?.data?.message || "Failed to update profile");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const changePassword = async (e) => {
+    e.preventDefault();
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
+    setUpdating(true);
+
+    try {
+      const response = await api.put("/api/vendor/changepassword", {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
+
+      toast.success("Password changed successfully");
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      toast.error(error.response?.data?.message || "Failed to change password");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const togglePasswordVisibility = (field) => {
+    setShowPassword((prev) => ({
+      ...prev,
+      [field]: !prev[field],
+    }));
+  };
+
+  const expertiseOptions = [
+    "Hairstylist",
+    "Nail technician",
+    "Makeup artist",
+    "Aesthetician/Esthetician",
+  ];
+
+  // Handle mobile section change
+  const handleMobileSectionChange = (section) => {
+    setActiveSection(section);
+    setMobileMenuOpen(false);
+  };
+
+  return (
+    <Modal
+      size="xl"
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Edit Profile & Settings"
+      showCloseButton={true}
+      closeOnOverlayClick={true}
+    >
+      <div className="flex flex-col lg:flex-row">
+        {/* Mobile Menu Button */}
+        <div className="lg:hidden">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {activeSection === "profile" && "Profile Information"}
+              {activeSection === "password" && "Change Password"}
+              {activeSection === "certificates" && "Certificates"}
+            </h3>
+            <Button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              variant="outline"
+              size="sm"
+              icon={mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            >
+              {/* {mobileMenuOpen ? "Close" : "Menu"} */}
+            </Button>
+          </div>
+        </div>
+
+        {/* Mobile Navigation Dropdown */}
+        {mobileMenuOpen && (
+          <div className="border-b border-gray-200 lg:hidden">
+            <nav className="p-4 space-y-2 bg-gray-50">
+              <button
+                onClick={() => handleMobileSectionChange("profile")}
+                className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
+                  activeSection === "profile"
+                    ? "bg-white text-green-700 shadow-sm border border-gray-200"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white"
+                }`}
+              >
+                <User className="w-5 h-5 mr-3" />
+                <div>
+                  <div className="font-medium">Profile Information</div>
+                  <div className="text-sm text-gray-500">Update personal details</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleMobileSectionChange("password")}
+                className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
+                  activeSection === "password"
+                    ? "bg-white text-green-700 shadow-sm border border-gray-200"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white"
+                }`}
+              >
+                <Lock className="w-5 h-5 mr-3" />
+                <div>
+                  <div className="font-medium">Change Password</div>
+                  <div className="text-sm text-gray-500">Update your password</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleMobileSectionChange("certificates")}
+                className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
+                  activeSection === "certificates"
+                    ? "bg-white text-green-700 shadow-sm border border-gray-200"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white"
+                }`}
+              >
+                <BadgeCheck className="w-5 h-5 mr-3" />
+                <div>
+                  <div className="font-medium">Certificates</div>
+                  <div className="text-sm text-gray-500">Manage documents</div>
+                </div>
+              </button>
+            </nav>
+          </div>
+        )}
+
+        {/* Desktop Sidebar Navigation */}
+        <div className="hidden w-64 border-r border-gray-200 lg:block bg-gray-50">
+          <nav className="p-4 space-y-2">
+            <button
+              onClick={() => setActiveSection("profile")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                activeSection === "profile"
+                  ? "bg-white text-green-700 shadow-sm border border-gray-200"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white"
+              }`}
+            >
+              <User className="w-4 h-4 mr-3" />
+              Profile Information
+            </button>
+
+            <button
+              onClick={() => setActiveSection("password")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                activeSection === "password"
+                  ? "bg-white text-green-700 shadow-sm border border-gray-200"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white"
+              }`}
+            >
+              <Lock className="w-4 h-4 mr-3" />
+              Change Password
+            </button>
+
+            <button
+              onClick={() => setActiveSection("certificates")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                activeSection === "certificates"
+                  ? "bg-white text-green-700 shadow-sm border border-gray-200"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white"
+              }`}
+            >
+              <BadgeCheck className="w-4 h-4 mr-3" />
+              Certificates
+            </button>
+          </nav>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 p-4 lg:p-6 max-h-[60vh] lg:max-h-[70vh] overflow-y-auto">
+          {/* ===== Profile Section ===== */}
+          {activeSection === "profile" && (
+            <form onSubmit={handleProfileSubmit}>
+              <div className="space-y-6">
+                {/* Profile Image */}
+                <div className="flex items-center space-x-4 lg:space-x-6">
+                  <div className="relative flex-shrink-0">
+                    <div className="w-16 h-16 overflow-hidden border-2 border-white rounded-full shadow-lg lg:w-20 lg:h-20">
+                      <img
+                        src={
+                          profileImage
+                            ? URL.createObjectURL(profileImage)
+                            : profile?.profileImage || "/profile-img.webp"
+                        }
+                        alt="Profile"
+                        className="object-cover w-full h-full"
+                      />
+                    </div>
+                    <label className="absolute bottom-0 right-0 p-1 text-white transition-colors bg-green-600 rounded-full shadow-lg cursor-pointer hover:bg-green-700">
+                      <Pencil className="w-3 h-3" />
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium text-gray-900">Profile Photo</h4>
+                    <p className="text-sm text-gray-500">
+                      JPG, PNG or Max 2MB.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Personal Information */}
+                <div className="grid grid-cols-1 gap-4 lg:gap-6 lg:grid-cols-2">
+                  <FormInput
+                    label="Full Name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    icon={<User className="w-5 h-5" />}
+                    placeholder="Enter your full name"
+                    required
+                  />
+                  <FormInput
+                    disabled
+                    label="Email Address"
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    icon={<Mail className="w-5 h-5" />}
+                    placeholder="Enter your email"
+                    required
+                  />
+                  <FormInput
+                    label="Phone Number"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    icon={<Phone className="w-5 h-5" />}
+                    placeholder="Enter your phone number"
+                  />
+                  <FormInput
+                    label="Date of Birth"
+                    name="birthDate"
+                    type="date"
+                    value={formData.birthDate}
+                    onChange={handleInputChange}
+                    icon={<Calendar className="w-5 h-5" />}
+                  />
+
+                  {profile?.vendorType === "company" && (
+                    <>
+                      <FormInput
+                        label="Contact Person"
+                        name="contactPerson"
+                        value={formData.contactPerson}
+                        onChange={handleInputChange}
+                        icon={<User className="w-5 h-5" />}
+                        placeholder="Main contact person"
+                      />
+                      <FormInput
+                        label="Google Business Profile"
+                        name="googleBusinessProfileLink"
+                        value={formData.googleBusinessProfileLink}
+                        onChange={handleInputChange}
+                        icon={<Globe className="w-5 h-5" />}
+                        placeholder="Business profile link"
+                      />
+                      <div className="lg:col-span-2">
+                        <FormTextarea
+                          label="Company Address"
+                          name="companyAddress"
+                          value={formData.companyAddress}
+                          onChange={handleInputChange}
+                          rows={3}
+                          icon={<Building className="w-5 h-5" />}
+                          placeholder="Enter company address"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {profile?.vendorType === "individual" && (
+                    <>
+                      <div className="lg:col-span-2">
+                        <FormTextarea
+                          label="Address"
+                          name="address"
+                          value={formData.address}
+                          onChange={handleInputChange}
+                          rows={3}
+                          icon={<MapPin className="w-5 h-5" />}
+                          placeholder="Enter your address"
+                        />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <FormTextarea
+                          maxLength={100}
+                          label="About me"
+                          name="aboutMe"
+                          value={formData.aboutMe}
+                          onChange={handleInputChange}
+                          rows={3}
+                          placeholder="Any additional information about your services"
+                        />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <FormSelect
+                          label="Expertise"
+                          name="expertise"
+                          value={formData.expertise}
+                          onChange={handleInputChange}
+                          options={expertiseOptions}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 pt-6 mt-6 border-t border-gray-200 sm:flex-row sm:justify-end sm:space-x-4">
+                <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={updating}
+                  icon={<Save className="w-5 h-5" />}
+                  className="w-full text-white bg-green-600 border-green-600 sm:w-auto hover:bg-green-700"
+                >
+                  Save Profile Changes
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {/* ===== Change Password Section ===== */}
+          {activeSection === "password" && (
+            <form onSubmit={changePassword}>
+              <div className="space-y-6">
+                <div className="p-4 border border-green-100 rounded-lg bg-green-50">
+                  <div className="flex">
+                    <Lock className="w-5 h-5 mr-3 text-green-600" />
+                    <div>
+                      <h4 className="font-medium text-green-800">
+                        Change Password
+                      </h4>
+                      <p className="text-sm text-green-700">
+                        Update your password to keep your account secure
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="relative">
+                    <FormInput
+                      label="Current Password"
+                      name="currentPassword"
+                      type={showPassword.current ? "text" : "password"}
+                      value={passwordData.currentPassword}
+                      onChange={handlePasswordChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute text-gray-400 right-3 top-9 hover:text-gray-600"
+                      onClick={() => togglePasswordVisibility("current")}
+                    >
+                      {showPassword.current ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <FormInput
+                      label="New Password"
+                      name="newPassword"
+                      type={showPassword.new ? "text" : "password"}
+                      value={passwordData.newPassword}
+                      onChange={handlePasswordChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute text-gray-400 right-3 top-9 hover:text-gray-600"
+                      onClick={() => togglePasswordVisibility("new")}
+                    >
+                      {showPassword.new ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <FormInput
+                      label="Confirm New Password"
+                      name="confirmPassword"
+                      type={showPassword.confirm ? "text" : "password"}
+                      value={passwordData.confirmPassword}
+                      onChange={handlePasswordChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute text-gray-400 right-3 top-9 hover:text-gray-600"
+                      onClick={() => togglePasswordVisibility("confirm")}
+                    >
+                      {showPassword.confirm ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 pt-6 mt-6 border-t border-gray-200 sm:flex-row sm:justify-end sm:space-x-4">
+                <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={updating}
+                  icon={<Lock className="w-5 h-5" />}
+                  className="w-full text-white bg-green-600 border-green-600 sm:w-auto hover:bg-green-700"
+                >
+                  Change Password
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {/* ===== Certificates Section ===== */}
+          {activeSection === "certificates" && (
+            <form onSubmit={handleProfileSubmit}>
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 gap-6">
+                  {/* Police Clearance */}
+                  <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
+                      Police Clearance
+                    </label>
+                    <FormFileInput
+                      name="policeClearance"
+                      accept="image/*,application/pdf"
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          policeClearance: e.target.files?.[0] || null,
+                        })
+                      }
+                    />
+                    {/* Show status if already uploaded */}
+                    <UploadedInfo
+                      url={profile?.policeClearance}
+                      label="Police Clearance"
+                      onDelete={deletePoliceClearance}
+                      certificateKey="policeClearance"
+                    />
+                  </div>
+
+                  {/* Certificate of Expertise */}
+                  <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
+                      Certificate of Expertise
+                    </label>
+                    <FormFileInput
+                      name="certificateOfExpertise"
+                      accept="image/*,application/pdf"
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          certificateOfExpertise: e.target.files?.[0] || null,
+                        })
+                      }
+                    />
+                    <UploadedInfo
+                      url={profile?.certificateOfExpertise}
+                      label="Certificate of Expertise"
+                      extra={
+                        formData.certificateOfExpertiseExpireDate ? (
+                          <>
+                            Expires on {formData.certificateOfExpertiseExpireDate}
+                          </>
+                        ) : undefined
+                      }
+                      onDelete={deleteCertificateOfExpertise}
+                      certificateKey="certificateOfExpertise"
+                    />
+                    {/* Only require date if a NEW file is picked */}
+                    {(formData.certificateOfExpertise ||
+                      formData.certificateOfExpertiseExpireDate) && (
+                      <div className="mt-4">
+                        <FormInput
+                          type="date"
+                          label="Certificate of Expertise Expiry Date"
+                          name="certificateOfExpertiseExpireDate"
+                          value={formData.certificateOfExpertiseExpireDate}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              certificateOfExpertiseExpireDate: e.target.value,
+                            })
+                          }
+                          required={!!formData.certificateOfExpertise}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Business License */}
+                  <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
+                      Business License
+                    </label>
+                    <FormFileInput
+                      name="businessLicense"
+                      accept="image/*,application/pdf"
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          businessLicense: e.target.files?.[0] || null,
+                        })
+                      }
+                    />
+                    <UploadedInfo
+                      url={profile?.businessLicense}
+                      label="Business License"
+                      extra={
+                        formData.businessLicenseExpireDate ? (
+                          <>Expires on {formData.businessLicenseExpireDate}</>
+                        ) : undefined
+                      }
+                      onDelete={deleteBusinessLicense}
+                      certificateKey="businessLicense"
+                    />
+                  </div>
+
+                  {(formData.businessLicense ||
+                    formData.businessLicenseExpireDate) && (
+                    <div>
+                      <FormInput
+                        type="date"
+                        label="Business License Expiry Date"
+                        name="businessLicenseExpireDate"
+                        value={formData.businessLicenseExpireDate}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            businessLicenseExpireDate: e.target.value,
+                          })
+                        }
+                        required={!!formData.businessLicense}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 pt-6 mt-6 border-t border-gray-200 sm:flex-row sm:justify-end sm:space-x-4">
+                <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={updating}
+                  icon={<Save className="w-5 h-5" />}
+                  className="w-full text-white bg-green-600 border-green-600 sm:w-auto hover:bg-green-700"
+                >
+                  Save Profile Changes
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+export default ProfileEditModal;
